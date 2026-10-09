@@ -1,0 +1,16 @@
+# 打包进 vsix 的内容控制（发布到商店时的文件清单）
+#
+# 不随扩展包发布的开发/可选内容：
+.vscode/**
+.github/**
+node_modules/**
+tools/**
+*.vsix
+*.log
+.gitignore
+.vscodeignore
+**/*.map
+_probe/**
+docs/assets/**
+
+# 保留：extension.js / package.json / README.md / CHANGELOG.md / LICENSE / icon.png / lib/**

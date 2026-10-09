@@ -1,0 +1,109 @@
+{
+  "name": "ai-agent-token-bar",
+  "displayName": "AI Agent Token Bar · 用量与吞吐看板",
+  "description": "在状态栏实时显示 AI Agent 会话指标：轮数、步数、tok/s、Token 用量、缓存命中率与上下文占用（适用于 Antigravity IDE / VS Code；数据取自本地会话库，非模拟值）",
+  "version": "0.3.0",
+  "license": "MIT",
+  "icon": "icon.png",
+  "publisher": "siweina",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/siweina/ai-agent-token-bar.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "keywords": [
+    "antigravity",
+    "agent",
+    "token",
+    "usage",
+    "tok/s",
+    "status bar",
+    "cascade",
+    "quota",
+    "metrics",
+    "用量看板",
+    "缓存命中"
+  ],
+  "galleryBanner": {
+    "color": "#1F1F23",
+    "theme": "dark"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "agentTokenBar.openDashboard",
+        "title": "Token 看板: 打开控制面板",
+        "category": "Token Bar"
+      },
+      {
+        "command": "agentTokenBar.openDetailsView",
+        "title": "Token 看板: 打开图形化实时看板",
+        "category": "Token Bar"
+      },
+      {
+        "command": "agentTokenBar.pickSession",
+        "title": "Token 看板: 切换监控的会话",
+        "category": "Token Bar"
+      },
+      {
+        "command": "agentTokenBar.refreshNow",
+        "title": "Token 看板: 立即刷新",
+        "category": "Token Bar"
+      },
+      {
+        "command": "agentTokenBar.copyDiagnostics",
+        "title": "Token 看板: 复制诊断信息",
+        "category": "Token Bar"
+      }
+    ],
+    "configuration": {
+      "title": "AI Agent Token Bar",
+      "properties": {
+        "agentTokenBar.alignment": {
+          "type": "string",
+          "enum": [
+            "left",
+            "right"
+          ],
+          "default": "right",
+          "description": "状态栏组件显示位置（左侧或右侧）"
+        },
+        "agentTokenBar.pollIntervalMs": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 300,
+          "description": "轮询会话库的间隔（毫秒）。默认 1000ms；仅在会话库文件有变化时才真正重读"
+        },
+        "agentTokenBar.contextWindowLimit": {
+          "type": "number",
+          "default": 256000,
+          "description": "模型最大上下文窗口（Tokens），用于计算百分比；仅在会话库未提供上限时作为兜底（实测会话库记录为 256000，此时以会话库为准）"
+        },
+        "agentTokenBar.conversationsDir": {
+          "type": "string",
+          "default": "",
+          "description": "Antigravity 会话库目录。留空则使用默认 ~/.gemini/antigravity-ide/conversations"
+        },
+        "agentTokenBar.pinnedConversationId": {
+          "type": "string",
+          "default": "",
+          "description": "锁定监控的会话 ID（cascade id）。留空表示自动跟随最近活动的会话"
+        },
+        "agentTokenBar.proxyStatsPath": {
+          "type": "string",
+          "default": "",
+          "description": "可选：本地 recorder 的统计文件路径（精确模式）。留空使用默认 ~/.antigravity-ide/token-bar-proxy-stats.json；文件不存在或超过 2 分钟未更新则自动回落到本地会话库口径"
+        }
+      }
+    }
+  }
+}
