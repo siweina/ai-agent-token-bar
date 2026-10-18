@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 
 const APPLY = process.argv.includes('--apply');
+const PRUNE = process.argv.includes('--prune');
 const CONV_DIR = path.join(process.env.USERPROFILE, '.gemini', 'antigravity-ide', 'conversations');
 const GS = path.join(process.env.APPDATA, 'Antigravity IDE', 'User', 'globalStorage', 'state.vscdb');
 const KEY = 'antigravityUnifiedStateSync.trajectorySummaries';
@@ -136,8 +137,20 @@ for (const c of missing) {
   console.log('  + ' + c.cascadeId.slice(0, 8) + '  ' + String(c.steps).padStart(5) + '步  ' + new Date(c.modified).toLocaleString('zh-CN') + '\n      ' + JSON.stringify(c.title.slice(0, 70)) + '\n      工作区=' + c.ws);
 }
 
-const merged = Buffer.concat([...entries.map((e) => e.raw), ...add]);
-console.log('\n索引: ' + raw.length + 'B / ' + entries.length + ' 条  →  ' + merged.length + 'B / ' + (entries.length + add.length) + ' 条');
+// --prune：去掉指向"已删除会话"的空引用（它们点开必定失败/转圈）
+const diskIds = new Set(convs.map((c) => c.cascadeId));
+const dead = entries.filter((e) => { const id = entryId(e.raw); return id && !diskIds.has(id); });
+let kept = entries;
+if (PRUNE) {
+  kept = entries.filter((e) => { const id = entryId(e.raw); return !id || diskIds.has(id); });
+  console.log('\n清理空引用 ' + dead.length + ' 条: ' + dead.map((e) => String(entryId(e.raw)).slice(0, 8)).join(', '));
+} else if (dead.length) {
+  console.log('\nℹ 另有 ' + dead.length + ' 条指向已删除会话的空引用（点开会失败）：' + dead.map((e) => String(entryId(e.raw)).slice(0, 8)).join(', '));
+  console.log('  需要清理时加 --prune 参数重跑。');
+}
+
+const merged = Buffer.concat([...kept.map((e) => e.raw), ...add]);
+console.log('\n索引: ' + raw.length + 'B / ' + entries.length + ' 条  →  ' + merged.length + 'B / ' + (kept.length + add.length) + ' 条  (补 ' + add.length + ' / 清 ' + (entries.length - kept.length) + ')');
 if (!APPLY) { console.log('（预览模式，未写盘）'); db.close(); return; }
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 fs.copyFileSync(GS, GS + '.bak-merge-' + stamp);
@@ -145,4 +158,4 @@ db.close();
 const w = new DatabaseSync(GS, { readOnly: false });
 w.prepare('UPDATE ItemTable SET value = ? WHERE key = ?').run(merged.toString('base64'), KEY);
 w.close();
-console.log('✓ 已补入 ' + add.length + ' 条，备份 .bak-merge-' + stamp);
+console.log('✓ 已补入 ' + add.length + ' 条、清理 ' + (entries.length - kept.length) + ' 条，备份 .bak-merge-' + stamp);
