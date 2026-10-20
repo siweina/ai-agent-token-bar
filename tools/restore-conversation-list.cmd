@@ -25,7 +25,7 @@ timeout /t 4 /nobreak >nul
 
 echo [2/3] 扫描会话库并补齐索引 ...
 echo.
-node "%~dp0restore-conversation-list.js" --apply
+node "%~dp0restore-conversation-list.js" --apply --prune
 if errorlevel 1 (
   echo.
   echo [错误] 脚本执行失败。需要 Node ^>= 22.5（内置 node:sqlite）。
