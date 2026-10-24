@@ -2,6 +2,16 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## 0.3.5
+
+- **面板内可直接切换权限档位**：胶囊上的 🛡️/⚡ 现在可点击 —— 本机桥新增 `POST /safety-mode`，
+  扩展侧复用桌面端**同一份**策略（`desktop/safety.js` 随包发布到 `extension/desktop/`）改写共享配置
+  （`~/.gemini/config/config.json` 与项目级 `outside-of-project.json`），保留文件其它内容，
+  首次写入前留 `.bak-tokenbar-*` 备份
+- **详情卡不再被截断**：改为 `position:fixed` 并挂到 `body`（不受面板容器 `overflow` 裁切），
+  下方空间不足时自动翻到胶囊上方；限高 `62vh` 可滚动。解决了"输入框在底部时弹出来被切掉"
+- 桥的 CORS 补齐 `POST` / `OPTIONS`（渲染进程可直接调用）
+
 ## 0.3.4
 
 - **面板内胶囊交互改进**（解决"详情卡消不下去"）：

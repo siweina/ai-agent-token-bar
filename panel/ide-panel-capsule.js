@@ -13,7 +13,7 @@
  */
 (function () {
   'use strict';
-  if (window.__agyTBIde && window.__agyTBIde.__ver === 'p3') return;
+  if (window.__agyTBIde && window.__agyTBIde.__ver === 'p4') return;
 
   var PORTS = [39177, 39178, 39179, 39277];
   var BOX_ID = 'antigravity.agentSidePanelInputBox';
@@ -136,6 +136,49 @@
     try { render(); } catch (e) { state.err = String(e && e.message || e); }
   }
 
+  /** 点面板里的权限胶囊 → 让扩展侧切换档位（POST 本机桥，写的是与桌面端共用的配置） */
+  function toggleSafety() {
+    var d = state.data;
+    if (!d || !state.port) return;
+    var next = d.safetyMode === 'guarded' ? 'full' : 'guarded';
+    fetch('http://127.0.0.1:' + state.port + '/safety-mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: next })
+    }).then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.ok) { state.data.safetyMode = j.mode; safeRender(); poll(); }
+        else { state.err = (j && j.error) || '切换失败'; safeRender(); }
+      })
+      .catch(function (e) { state.err = String(e && e.message); safeRender(); });
+  }
+
+  /** 卡片定位：挂在 body 上（不被面板容器裁切），下方放不下就翻到上方 */
+  function positionPop(pop, root) {
+    var r = root.getBoundingClientRect();
+    var w = Math.min(440, Math.max(260, window.innerWidth - 24));
+    pop.style.position = 'fixed';
+    pop.style.right = 'auto';
+    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+    pop.style.width = w + 'px';
+    pop.style.maxHeight = '62vh';
+    pop.style.overflowY = 'auto';
+    pop.style.marginTop = '0';
+    pop.style.top = (r.bottom + 6) + 'px';
+    pop.style.bottom = 'auto';
+    var ph = pop.getBoundingClientRect().height;
+    if (r.bottom + 6 + ph > window.innerHeight - 8) {          // 下方不够 → 翻到上方
+      pop.style.top = 'auto';
+      pop.style.bottom = (window.innerHeight - r.top + 6) + 'px';
+      var topEdge = window.innerHeight - parseFloat(pop.style.bottom) - ph;
+      if (topEdge < 8) {                                        // 上方也不够 → 贴顶并限高
+        pop.style.bottom = 'auto';
+        pop.style.top = '8px';
+        pop.style.maxHeight = Math.max(120, r.top - 16) + 'px';
+      }
+    }
+  }
+
   /* ---------- 渲染 ---------- */
   function buildChips(d) {
     var frag = document.createDocumentFragment();
@@ -171,8 +214,12 @@
       frag.appendChild(chip([h('span', 'sub', '上下文 '), bar, h('b', null, d.contextPercent.toFixed(1) + '%')]));
     }
     if (d.safetyMode) {
-      frag.appendChild(chip([h('span', null, d.safetyMode === 'guarded' ? '🛡️ 受控' : '⚡ 原样')],
-        '权限档位（与桌面端共用 ~/.gemini/config 配置）'));
+      var safe = chip([h('span', null, d.safetyMode === 'guarded' ? '🛡️ 受控' : '⚡ 原样')],
+        '点击切换权限档位：受控（命令/写入/发送按情境判断）/ 原样（全部放行）。与桌面端共用同一份配置');
+      safe.classList.add('click', 'safe');
+      if (d.safetyMode !== 'guarded') safe.classList.add('full');
+      safe.setAttribute('data-act', 'safety');
+      frag.appendChild(safe);
     }
     frag.appendChild(h('span', 'sp'));
     frag.appendChild(chip([h('span', 'sub', fmtDur(d.durationMs))]));
@@ -242,6 +289,7 @@
       root.addEventListener('click', function (e) {
         var t = e.target;
         if (!t || !t.closest) return;
+        if (t.closest('[data-act="safety"]')) { toggleSafety(); return; }
         if (t.closest('.agytb-x')) { state.pinned = false; state.open = false; safeRender(); return; }
         if (t.closest('.agytb-pin')) { state.pinned = !state.pinned; state.open = true; safeRender(); return; }
         if (t.closest('.c')) { state.pinned = false; state.open = !state.open; safeRender(); }   // 点击胶囊=开/关，不再直接固定
@@ -258,18 +306,32 @@
     var root = document.getElementById(ROOT_ID);
     if (!root) return;
     while (root.firstChild) root.removeChild(root.firstChild);
+    var oldPop = document.getElementById(POP_ID);
+    if (oldPop && oldPop.parentElement) oldPop.parentElement.removeChild(oldPop);
     var d = state.data;
     root.appendChild(buildChips(d));
-    if (state.open && !state.offline && d) root.appendChild(buildPop(d));
+    if (state.open && !state.offline && d) {
+      var pop = buildPop(d);
+      // 卡片的悬停也要算"在里面"，否则鼠标从胶囊移到卡片上就被判定离开
+      pop.addEventListener('mouseenter', function () { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } });
+      pop.addEventListener('mouseleave', function () {
+        if (state.pinned) return;
+        if (hideTimer) clearTimeout(hideTimer);
+        hideTimer = setTimeout(function () { hideTimer = null; if (!state.pinned) { state.open = false; safeRender(); } }, 250);
+      });
+      document.body.appendChild(pop);      // 挂到 body：避免被面板容器的 overflow 裁切
+      positionPop(pop, root);
+    }
   }
 
   /* ---------- 启动 ---------- */
   window.__agyTBIde = {
-    __ver: 'p3',
+    __ver: 'p4',
     state: state,
     refresh: poll,
     destroy: function () {
       var r = document.getElementById(ROOT_ID); if (r && r.parentElement) r.parentElement.removeChild(r);
+      var p = document.getElementById(POP_ID); if (p && p.parentElement) p.parentElement.removeChild(p);
       var s = document.getElementById(STYLE_ID); if (s && s.parentElement) s.parentElement.removeChild(s);
       delete window.__agyTBIde;
     }
@@ -284,7 +346,7 @@
   document.addEventListener('mousedown', function (e) {
     if (!state.open || state.pinned) return;
     var t = e.target;
-    if (t && t.closest && t.closest('#' + ROOT_ID)) return;
+    if (t && t.closest && (t.closest('#' + ROOT_ID) || t.closest('#' + POP_ID))) return;
     state.open = false;
     safeRender();
   }, true);

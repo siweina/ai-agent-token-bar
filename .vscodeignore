@@ -6,7 +6,9 @@
 node_modules/**
 tools/**
 # desktop/ 是给 Antigravity 桌面客户端用的注入器，不属于 IDE 扩展包
+# （唯一例外：safety.js 是权限档位策略，扩展侧要复用它，故随包发布到 extension/desktop/）
 desktop/**
+!desktop/safety.js
 # panel/ 是 IDE 面板内胶囊的注入器（安装期工具，从仓库运行即可）
 panel/**
 *.vsix

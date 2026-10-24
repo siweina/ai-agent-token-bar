@@ -14,6 +14,9 @@ const path = require('path');
 const os = require('os');
 const http = require('http');
 const { SessionStore, conversationsDir, readAllSummaries } = require('./lib/session');
+// 权限档位策略：与桌面端**共用同一份**（desktop/safety.js 随包发布到 extension/desktop/）
+let safetyPolicy = null;
+try { safetyPolicy = require('./desktop/safety.js'); } catch (_) { safetyPolicy = null; }
 
 const DEFAULT_PROXY_STATS = path.join(os.homedir(), '.antigravity-ide', 'token-bar-proxy-stats.json');
 
@@ -589,6 +592,64 @@ function extVersion() {
 }
 
 /** 只读探测共享的权限档位（~/.gemini/config/config.json，桌面端与 IDE 共用） */
+function safetyPaths() {
+  const root = path.join(os.homedir(), '.gemini', 'config');
+  return {
+    global: path.join(root, 'config.json'),
+    project: path.join(root, 'projects', 'outside-of-project.json')
+  };
+}
+
+/**
+ * 切换权限档位（受控 / 原样）—— 与桌面端的「安全对齐」写同一份配置。
+ * 只改 allow / ask 与终端沙箱开关，保留文件里其它内容；首次写入前留 .bak-tokenbar-* 备份。
+ */
+let safetyBackupDone = false;
+function applySafetyMode(mode) {
+  if (!safetyPolicy) return { ok: false, error: '策略模块未随包发布（desktop/safety.js 缺失）' };
+  const want = mode === 'full' ? 'full' : 'guarded';
+  const p = safetyPaths();
+  if (!fs.existsSync(p.global)) return { ok: false, error: '未找到 ' + p.global };
+
+  let j;
+  try { j = JSON.parse(fs.readFileSync(p.global, 'utf8')); } catch (e) { return { ok: false, error: 'config.json 解析失败: ' + e.message }; }
+
+  if (!safetyBackupDone) {
+    try {
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      fs.copyFileSync(p.global, p.global + '.bak-tokenbar-' + stamp);
+      if (fs.existsSync(p.project)) fs.copyFileSync(p.project, p.project + '.bak-tokenbar-' + stamp);
+      safetyBackupDone = true;
+    } catch (_) {}
+  }
+
+  const curAllow = (((j.userSettings || {}).globalPermissionGrants || {}).allow) || [];
+  const plan = safetyPolicy.buildGrantPlan(want, curAllow);
+
+  j.userSettings = j.userSettings || {};
+  j.userSettings.globalPermissionGrants = Object.assign({}, j.userSettings.globalPermissionGrants, {
+    allow: plan.allow,
+    ask: plan.ask
+  });
+  if (plan.settings && typeof plan.settings.enableTerminalSandbox === 'boolean') {
+    j.userSettings.enableTerminalSandbox = plan.settings.enableTerminalSandbox;
+  }
+  fs.writeFileSync(p.global, JSON.stringify(j, null, 2) + '\n', 'utf8');
+
+  if (fs.existsSync(p.project)) {
+    try {
+      const pr = JSON.parse(fs.readFileSync(p.project, 'utf8'));
+      const inner = (pr.permissionGrants && pr.permissionGrants.permissionGrants) || {};
+      pr.permissionGrants = pr.permissionGrants || {};
+      pr.permissionGrants.permissionGrants = Object.assign({}, inner, { allow: plan.allow, ask: plan.ask });
+      fs.writeFileSync(p.project, JSON.stringify(pr, null, 2) + '\n', 'utf8');
+    } catch (_) {}
+  }
+
+  safetyModeCache = { at: 0, mode: null };   // 立刻失效缓存，下次读盘
+  return { ok: true, mode: readSafetyMode(), allow: plan.allow.length, ask: plan.ask.length };
+}
+
 function readSafetyMode() {
   if (Date.now() - safetyModeCache.at < 10000) return safetyModeCache.mode;
   let mode = null;
@@ -646,11 +707,25 @@ function startPanelBridge(ctx) {
       res.writeHead(code || 200, {
         'Content-Type': 'application/json; charset=utf-8',
         'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
         'Cache-Control': 'no-store',
         'Content-Length': Buffer.byteLength(body)
       });
       res.end(body);
     };
+    if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }); return res.end(); }
+    if (req.method === 'POST' && url === '/safety-mode') {
+      let body = '';
+      req.on('data', (c) => { body += c; if (body.length > 4096) { try { req.destroy(); } catch (_) {} } });
+      req.on('end', () => {
+        let mode = null;
+        try { mode = JSON.parse(body || '{}').mode; } catch (_) {}
+        if (mode !== 'guarded' && mode !== 'full') return send({ ok: false, error: 'mode 必须是 guarded 或 full' }, 400);
+        try { send(applySafetyMode(mode)); } catch (e) { send({ ok: false, error: e.message }, 500); }
+      });
+      return;
+    }
     if (url === '/health') return send({ ok: true, v: extVersion(), port: bridgePort });
     if (url === '/snapshot') return send(bridgeSnapshot());
     return send({ ok: false, error: 'not found' }, 404);

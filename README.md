@@ -211,6 +211,7 @@ node panel/install.js --uninstall :: 卸载（只摘掉本插件的标签）
 - 会改动 IDE 安装目录里的 `workbench.html` / `workbench-jetski-agent.html`（各加一个 `<script>` 标签）
   并重算 `product.json` 的校验值 —— 与汉化同一套机制，改动前有 `.agy-tb-orig` 备份。
 - 用法：悬停胶囊看详情、点胶囊开/关、点卡片里的「固定」常驻、「✕ 关闭」或 Esc 收起。
+- 胶囊最右的 **🛡️ 受控 / ⚡ 原样 可直接点击切换权限档位**（写的是与桌面端共用的那份配置）。
 - 嫌状态栏那条重复？执行命令 **「Token 看板: 显示/隐藏状态栏组件」**（或设 `agentTokenBar.showStatusBar: false`）。
 
 ## 安全与隐私
