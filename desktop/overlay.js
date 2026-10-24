@@ -431,11 +431,15 @@
     if (ctxP !== null && ctxP !== undefined) {
       html += '<span class="agytb-chip" title="点击可固定/取消固定详情卡片">' + ICON.ctx + '上下文 <span class="agytb-bar ' + level(ctxP) + '"><i style="width:' + Math.max(2, Math.min(100, ctxP)).toFixed(1) + '%"></i></span><b>' + fmtPct(ctxP) + '</b></span>';
     }
-    html += '<span class="agytb-chip agytb-perm" data-active="' + (fullPerm ? '1' : '0') + '" title="' +
-      (fullPerm
-        ? '完整权限（无限制）已开启：MCP/命令/沙箱外/文件/网页全部放行，点击可切换回常规模式'
-        : '点击一键开启「完整权限（无限制）」：包含 MCP 工具、命令、文件、网页全放行') + '">' +
-      (fullPerm ? ICON.bolt + '<b>完整权限</b>' : ICON.shield + '<span>常规权限</span>') + '</span>';
+    // 权限胶囊：安全对齐层接管时由它自己的胶囊显示档位（🛡️ 受控 / ⚡ 原样），这里不再重复显示
+    var safetyOwnsChip = !!(window.AGYTB_SAFETY_UI && window.AGYTB_SAFETY_UI.ownsGuard && window.AGYTB_SAFETY_UI.ownsGuard());
+    if (!safetyOwnsChip) {
+      html += '<span class="agytb-chip agytb-perm" data-active="' + (fullPerm ? '1' : '0') + '" title="' +
+        (fullPerm
+          ? '完整权限（无限制）已开启：MCP/命令/沙箱外/文件/网页全部放行，点击可切换回常规模式'
+          : '点击一键开启「完整权限（无限制）」：包含 MCP 工具、命令、文件、网页全放行') + '">' +
+        (fullPerm ? ICON.bolt + '<b>完整权限</b>' : ICON.shield + '<span>常规权限</span>') + '</span>';
+    }
 
     html += '<span class="agytb-spacer"></span>';
     html += '<span class="agytb-opt1 agytb-sub">' + fmtDur(d.durationMs) + '</span>';
@@ -458,17 +462,27 @@
       cell('逐次中位数 / 末次', (d.speed && d.speed.perGenMedian ? d.speed.perGenMedian.toFixed(1) : '—') + ' / ' + (d.speed && d.speed.last ? d.speed.last.toFixed(1) : '—') + ' tok/s') +
       cell('模型', esc(d.model || '—')) +
       '</div>' +
-      '<div class="agytb-perm-box" data-active="' + (fullPerm ? '1' : '0') + '">' +
+      '<div class="agytb-perm-box" data-active="' + ((safetyOwnsChip ? window.AGYTB_SAFETY_UI.state().mode === 'guarded' : fullPerm) ? '1' : '0') + '">' +
         '<div class="agytb-perm-info">' +
-          '<div class="agytb-perm-title">' + (fullPerm ? ICON.bolt + '完整权限（无限制）已激活' : ICON.shield + '当前为常规权限模式') + '</div>' +
+          '<div class="agytb-perm-title">' +
+            (safetyOwnsChip
+              ? (window.AGYTB_SAFETY_UI.state().mode === 'guarded' ? ICON.shield + '安全对齐：受控模式' : ICON.bolt + '完整权限（原样）已激活')
+              : (fullPerm ? ICON.bolt + '完整权限（无限制）已激活' : ICON.shield + '当前为常规权限模式')) +
+          '</div>' +
           '<div class="agytb-perm-desc">' +
-            (fullPerm
-              ? '已放行：mcp(*) · command(*) · unsandboxed(*) · read/write_file(*) · read/execute_url(*) + 弹窗自动通过'
-              : '开启后将补齐官方 Turbo 缺失的 MCP 工具、网页控制与沙箱外命令通配符放行，不再弹出权限申请') +
+            (safetyOwnsChip
+              ? (window.AGYTB_SAFETY_UI.state().mode === 'guarded'
+                  ? '只读直接放行；命令/写入/QQ 发送/沙箱外操作按情境自动放行或交你确认'
+                  : '已全部放行；沙箱外执行与浏览器控制仍不自动放行')
+              : (fullPerm
+                  ? '已放行：mcp(*) · command(*) · unsandboxed(*) · read/write_file(*) · read/execute_url(*) + 弹窗自动通过'
+                  : '开启后将补齐官方 Turbo 缺失的 MCP 工具、网页控制与沙箱外命令通配符放行，不再弹出权限申请')) +
           '</div>' +
         '</div>' +
         '<button type="button" class="agytb-perm-btn" data-active="' + (fullPerm ? '1' : '0') + '">' +
-          (fullPerm ? '已开启（点击还原）' : '一键开启完整权限') +
+          (safetyOwnsChip
+            ? (window.AGYTB_SAFETY_UI.state().mode === 'guarded' ? '切换到 ⚡ 原样' : '切换到 🛡️ 受控')
+            : (fullPerm ? '已开启（点击还原）' : '一键开启完整权限')) +
         '</button>' +
       '</div>' +
       '<div class="agytb-note">数据来自本机会话库（只读）。点击下方胶囊或右上角「固定窗口」可常驻显示，点击空白处关闭。</div>' +
