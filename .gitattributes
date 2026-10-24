@@ -1,0 +1,9 @@
+# 统一换行：仓库内一律 LF，Windows 脚本用 CRLF，二进制不处理
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.ico binary
+*.vsix binary

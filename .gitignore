@@ -18,3 +18,7 @@ npm-debug.log*
 # 本地调试产物（recorder 的统计文件等，切勿提交）
 token-bar-proxy-stats.json
 *-stats.json
+
+# 桌面端注入器的本地运行时状态
+desktop/injector.pid
+desktop/safety-config.json
