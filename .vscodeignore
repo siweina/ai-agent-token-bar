@@ -5,6 +5,8 @@
 .github/**
 node_modules/**
 tools/**
+# desktop/ 是给 Antigravity 桌面客户端用的注入器，不属于 IDE 扩展包
+desktop/**
 *.vsix
 *.log
 .gitignore

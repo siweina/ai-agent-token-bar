@@ -432,12 +432,43 @@ function openDashboardMenu() {
 
 // ---------------------------------------------------------------- 生命周期
 
+/**
+ * 「当前打开的会话」探测：Antigravity 的产物/编辑器标签 URI 里带会话目录
+ * （brain/<cascadeId>/…），因此从打开的标签就能读到用户正在看哪个会话。
+ * 这是公开 API（vscode.window.tabGroups），不读内部状态库、不改动任何文件。
+ * 取不到时返回 null —— 会话层会退回「近期活动 + 粘滞」策略。
+ */
+const CASCADE_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+function activeConversationFromTabs() {
+  try {
+    const groups = (vscode.window.tabGroups && vscode.window.tabGroups.all) || [];
+    let fallback = null;
+    for (const g of groups) {
+      for (const t of g.tabs) {
+        const input = t.input || {};
+        const uri = input.uri || (input.original && input.original.uri);
+        if (!uri) continue;
+        const s = typeof uri.toString === 'function' ? uri.toString() : String(uri);
+        const m = s.match(CASCADE_RE);
+        if (!m) continue;
+        if (t.isActive && g.isActive) return m[0];        // 当前激活标签优先
+        if (t.isActive && !fallback) fallback = m[0];
+        if (!fallback) fallback = m[0];
+      }
+    }
+    return fallback;
+  } catch (_) {
+    return null;
+  }
+}
+
 function buildStore(context) {
   const c = cfg();
   return new SessionStore({
     dir: c.conversationsDir,
     pollMs: c.pollIntervalMs,
     conversationId: c.pinnedConversationId || null,
+    activeIdProvider: c.followActiveConversation === false ? null : activeConversationFromTabs,
     onUpdate: (snap) => {
       // 会话元信息（标题等）按需补一次，避免每轮都扫全部库
       if (!currentSnap || currentSnap.conversationId !== snap.conversationId) {

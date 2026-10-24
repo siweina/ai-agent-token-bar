@@ -93,10 +93,15 @@
           "default": "",
           "description": "Antigravity 会话库目录。留空则使用默认 ~/.gemini/antigravity-ide/conversations"
         },
+        "agentTokenBar.followActiveConversation": {
+          "type": "boolean",
+          "default": true,
+          "description": "跟随当前打开的会话：从编辑器标签读会话 ID（Antigravity 产物标签 URI 里带 brain/<cascadeId>/）。关闭则退回「近期活动 + 粘滞」策略"
+        },
         "agentTokenBar.pinnedConversationId": {
           "type": "string",
           "default": "",
-          "description": "锁定监控的会话 ID（cascade id）。留空表示自动跟随最近活动的会话"
+          "description": "锁定监控的会话 ID（cascade id）。留空表示自动跟随当前打开的会话"
         },
         "agentTokenBar.proxyStatsPath": {
           "type": "string",

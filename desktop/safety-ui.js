@@ -24,6 +24,7 @@
   var lastDecision = null;
   var lastWarn = null;
   var lastExternalScore = 0;   // 可视区域里"外部内容标记"的计数，用于判断是否有新的外部内容到达
+  var lastInjectionSig = '';   // 上一次告警过的可疑文本签名（同一段只告警一次）
   var panelOpen = false;
   var busy = false;
 
@@ -134,13 +135,18 @@
       lastExternalScore = extScore;   // 内容滚出可视窗口时计数下降属正常，跟随即可
     }
     // 2) 注入特征 → 警告（不阻断，但标记出来）
+    //    同一段可疑文本只告警一次（否则内容留在屏幕上会每 20s 重复刷屏）
     var scan = S.scanUntrusted(text);
     if (scan.suspicious) {
       var ids = scan.injections.map(function (x) { return x.id; }).join(',');
-      if (!lastWarn || lastWarn.kind !== 'injection' || (Date.now() - lastWarn.at) > 20000) {
+      var sig = ids + '|' + scan.injections.map(function (x) { return x.sample; }).join('|');
+      if (sig !== lastInjectionSig) {
+        lastInjectionSig = sig;
         lastWarn = { kind: 'injection', reasons: ['外部内容含指令式文本：' + ids + '（已标记）'], at: Date.now(), samples: scan.injections.slice(0, 3) };
         log.add({ action: 'warn', kind: 'injection', reason: ids, sample: (scan.injections[0] || {}).sample || '' });
       }
+    } else {
+      lastInjectionSig = '';
     }
   }
 
@@ -247,7 +253,7 @@
       '<div class="row"><span>QQ 发送内容干净时自动放行</span><button data-toggle="autoApproveCleanQqSend" data-on="' + (cfg.autoApproveCleanQqSend ? '1' : '0') + '">' + (cfg.autoApproveCleanQqSend ? '开' : '关') + '</button></div>' +
       '<div class="row"><span>命令/写入（未污染时）自动放行</span><button data-toggle="autoApproveCommands" data-on="' + (cfg.autoApproveCommands ? '1' : '0') + '">' + (cfg.autoApproveCommands ? '开' : '关') + '</button></div>' +
       '<div class="row"><span>受控模式开启终端沙箱</span><button data-toggle="sandboxInGuarded" data-on="' + (cfg.sandboxInGuarded ? '1' : '0') + '">' + (cfg.sandboxInGuarded ? '开' : '关') + '</button></div>' +
-      '<div class="row"><span>污染窗口时长</span><span><button data-window="-30">-30s</button> ' + Math.round(cfg.taintWindowMs / 1000) + 's <button data-window="30">+30s</button></span></div>' +
+      '<div class="row"><span>污染窗口时长</span><span><button data-window="-30">-30 秒</button> ' + Math.round(cfg.taintWindowMs / 1000) + ' 秒 <button data-window="30">+30 秒</button></span></div>' +
       '<div class="log">' + (rows || '<div class="muted">暂无记录（自动放行/转人工/警告都会记在这里）</div>') + '</div>' +
       '<div class="row"><span class="muted">只读数据 · 不联网 · 不改动会话内容</span><button data-act="close">关闭</button></div>';
 
