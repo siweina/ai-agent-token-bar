@@ -2,7 +2,7 @@
   "name": "ai-agent-token-bar",
   "displayName": "AI Agent Token Bar · 用量与吞吐看板",
   "description": "在状态栏实时显示 AI Agent 会话指标：轮数、步数、tok/s、Token 用量、缓存命中率与上下文占用（适用于 Antigravity IDE / VS Code；数据取自本地会话库，非模拟值）",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "license": "MIT",
   "icon": "icon.png",
   "publisher": "siweina",
@@ -60,6 +60,11 @@
         "category": "Token Bar"
       },
       {
+        "command": "agentTokenBar.toggleStatusBar",
+        "title": "Token 看板: 显示/隐藏状态栏组件",
+        "category": "Token Bar"
+      },
+      {
         "command": "agentTokenBar.copyDiagnostics",
         "title": "Token 看板: 复制诊断信息",
         "category": "Token Bar"
@@ -92,6 +97,11 @@
           "type": "string",
           "default": "",
           "description": "Antigravity 会话库目录。留空则使用默认 ~/.gemini/antigravity-ide/conversations"
+        },
+        "agentTokenBar.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "在状态栏显示用量组件。关掉后只保留看板与面板内胶囊（命令「显示/隐藏状态栏组件」可一键切换）"
         },
         "agentTokenBar.panelBridge": {
           "type": "boolean",

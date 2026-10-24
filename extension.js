@@ -41,7 +41,11 @@ function cfg() {
     pollIntervalMs: Number(c.get('pollIntervalMs')) || 1000,
     conversationsDir: c.get('conversationsDir') || '',
     pinnedConversationId: c.get('pinnedConversationId') || '',
-    proxyStatsPath: c.get('proxyStatsPath') || ''
+    proxyStatsPath: c.get('proxyStatsPath') || '',
+    showStatusBar: c.get('showStatusBar') !== false,          // 默认显示
+    panelBridge: c.get('panelBridge') !== false,              // 默认开
+    panelBridgePort: Number(c.get('panelBridgePort')) || 39177,
+    followActiveConversation: c.get('followActiveConversation') !== false
   };
 }
 
@@ -555,6 +559,20 @@ function restartStore() {
 
 let activateContext = null;
 
+/** 状态栏组件的显示/隐藏（由配置 agentTokenBar.showStatusBar 控制） */
+function syncStatusBar() {
+  if (!statusBarItem) return;
+  if (cfg().showStatusBar === false) statusBarItem.hide();
+  else statusBarItem.show();
+}
+
+async function toggleStatusBar() {
+  const cur = cfg().showStatusBar !== false;
+  await vscode.workspace.getConfiguration('agentTokenBar').update('showStatusBar', !cur, vscode.ConfigurationTarget.Global);
+  syncStatusBar();
+  vscode.window.showInformationMessage('AI Agent Token Bar：状态栏组件已' + (cur ? '隐藏（面板内胶囊与看板不受影响）' : '显示'));
+}
+
 // ---------------------------------------------------------------- 面板内胶囊的本机桥
 //
 // IDE 的智能体面板 DOM 在渲染进程，而会话库是扩展宿主读的 → 中间需要一条通道。
@@ -672,7 +690,7 @@ function activate(context) {
   statusBarItem.name = 'AI Agent 用量看板（真实数据）';
   statusBarItem.command = 'agentTokenBar.openDashboard';
   statusBarItem.text = '⏱ Token Bar: 正在连接会话库…';
-  statusBarItem.show();
+  if (c.showStatusBar !== false) statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
   context.subscriptions.push(
@@ -680,12 +698,13 @@ function activate(context) {
     vscode.commands.registerCommand('agentTokenBar.openDetailsView', () => openDetailsWebview(context)),
     vscode.commands.registerCommand('agentTokenBar.pickSession', pickSession),
     vscode.commands.registerCommand('agentTokenBar.refreshNow', refreshNow),
+    vscode.commands.registerCommand('agentTokenBar.toggleStatusBar', toggleStatusBar),
     vscode.commands.registerCommand('agentTokenBar.copyDiagnostics', copyDiagnostics)
   );
 
   // 配置变化即时生效
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration('agentTokenBar')) restartStore();
+    if (e.affectsConfiguration('agentTokenBar')) { restartStore(); syncStatusBar(); }
   }));
 
   // 能力自检：node:sqlite 是读取会话库的前提，缺失时给出明确提示而不是静默失败

@@ -13,7 +13,7 @@
  */
 (function () {
   'use strict';
-  if (window.__agyTBIde && window.__agyTBIde.__ver === 'p2') return;
+  if (window.__agyTBIde && window.__agyTBIde.__ver === 'p3') return;
 
   var PORTS = [39177, 39178, 39179, 39277];
   var BOX_ID = 'antigravity.agentSidePanelInputBox';
@@ -23,6 +23,7 @@
   var POLL_MS = 1000;
 
   var state = { port: null, data: null, offline: false, pinned: false, open: false, lastOk: 0, err: null };
+  var hoverTimer = null, hideTimer = null;
 
   /* ---------- 格式化 ---------- */
   function fmtTok(n) {
@@ -77,7 +78,12 @@
     'color:var(--vscode-foreground,#eee);box-shadow:0 8px 24px rgba(0,0,0,.4);font-size:12px;line-height:1.5}',
     '#' + POP_ID + ' .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 10px}',
     '#' + POP_ID + ' .k{opacity:.7;font-size:11px}#' + POP_ID + ' .v{font-weight:600}',
-    '#' + POP_ID + ' .foot{margin-top:8px;padding-top:6px;border-top:1px solid rgba(128,128,128,.2);opacity:.7;font-size:11px;display:flex;justify-content:space-between;gap:8px}'
+    '#' + POP_ID + ' .foot{margin-top:8px;padding-top:6px;border-top:1px solid rgba(128,128,128,.2);opacity:.7;font-size:11px;display:flex;justify-content:space-between;gap:8px;align-items:center}',
+    '#' + POP_ID + ' .btns{display:flex;gap:6px}',
+    '#' + POP_ID + ' .agytb-btn{cursor:pointer;padding:2px 8px;border-radius:6px;font-size:11px;color:inherit;',
+    'background:transparent;border:1px solid rgba(128,128,128,.45)}',
+    '#' + POP_ID + ' .agytb-btn:hover{border-color:var(--vscode-focusBorder,#4a9eff)}',
+    '#' + POP_ID + ' .agytb-btn.on{border-color:rgba(22,163,74,.6);color:#16a34a}'
   ].join('');
 
   function ensureStyle() {
@@ -198,7 +204,14 @@
     pop.appendChild(grid);
     var foot = h('div', 'foot');
     foot.appendChild(h('span', null, '跟随：' + (d.followSource || '—') + ' · ' + (d.conversationId || '').slice(0, 8)));
-    foot.appendChild(h('span', null, state.pinned ? '已固定（点击胶囊取消）' : '悬停查看 · 点击固定'));
+    var btns = h('span', 'btns');
+    var pinBtn = h('button', 'agytb-btn agytb-pin' + (state.pinned ? ' on' : ''), state.pinned ? '已固定' : '固定');
+    pinBtn.type = 'button';
+    var xBtn = h('button', 'agytb-btn agytb-x', '✕ 关闭');
+    xBtn.type = 'button';
+    btns.appendChild(pinBtn);
+    btns.appendChild(xBtn);
+    foot.appendChild(btns);
     pop.appendChild(foot);
     return pop;
   }
@@ -214,14 +227,24 @@
       root = document.createElement('div');
       root.id = ROOT_ID;
       root.style.position = 'relative';
-      root.addEventListener('mouseenter', function () { state.open = true; safeRender(); });
-      root.addEventListener('mouseleave', function () { if (!state.pinned) { state.open = false; safeRender(); } });
+      root.addEventListener('mouseenter', function () {
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        if (state.open || hoverTimer) return;
+        // 延迟 300ms 才展开：避免鼠标路过就闪出卡片
+        hoverTimer = setTimeout(function () { hoverTimer = null; state.open = true; safeRender(); }, 300);
+      });
+      root.addEventListener('mouseleave', function () {
+        if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+        if (state.pinned) return;
+        if (hideTimer) clearTimeout(hideTimer);
+        hideTimer = setTimeout(function () { hideTimer = null; if (!state.pinned) { state.open = false; safeRender(); } }, 250);
+      });
       root.addEventListener('click', function (e) {
         var t = e.target;
-        if (!t || !t.closest || !t.closest('.c')) return;
-        if (state.pinned) { state.pinned = false; state.open = false; }
-        else { state.pinned = true; state.open = true; }
-        safeRender();
+        if (!t || !t.closest) return;
+        if (t.closest('.agytb-x')) { state.pinned = false; state.open = false; safeRender(); return; }
+        if (t.closest('.agytb-pin')) { state.pinned = !state.pinned; state.open = true; safeRender(); return; }
+        if (t.closest('.c')) { state.pinned = false; state.open = !state.open; safeRender(); }   // 点击胶囊=开/关，不再直接固定
       });
       box.parentElement.insertBefore(root, box.nextSibling);
     } else if (root.previousElementSibling !== box) {
@@ -242,7 +265,7 @@
 
   /* ---------- 启动 ---------- */
   window.__agyTBIde = {
-    __ver: 'p2',
+    __ver: 'p3',
     state: state,
     refresh: poll,
     destroy: function () {
@@ -256,4 +279,20 @@
   ensureMounted();
   probePorts().then(poll);
   setInterval(poll, POLL_MS);
+
+  // 点卡片外面 / 按 Esc 都能关掉（固定状态除外）
+  document.addEventListener('mousedown', function (e) {
+    if (!state.open || state.pinned) return;
+    var t = e.target;
+    if (t && t.closest && t.closest('#' + ROOT_ID)) return;
+    state.open = false;
+    safeRender();
+  }, true);
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (!state.open && !state.pinned) return;
+    state.pinned = false;
+    state.open = false;
+    safeRender();
+  }, true);
 })();

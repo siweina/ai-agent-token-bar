@@ -210,6 +210,8 @@ node panel/install.js --uninstall :: 卸载（只摘掉本插件的标签）
 - 数据来自扩展起的本机桥：**只绑 `127.0.0.1`**，只回指标 JSON（不含对话正文），端口默认 39177。
 - 会改动 IDE 安装目录里的 `workbench.html` / `workbench-jetski-agent.html`（各加一个 `<script>` 标签）
   并重算 `product.json` 的校验值 —— 与汉化同一套机制，改动前有 `.agy-tb-orig` 备份。
+- 用法：悬停胶囊看详情、点胶囊开/关、点卡片里的「固定」常驻、「✕ 关闭」或 Esc 收起。
+- 嫌状态栏那条重复？执行命令 **「Token 看板: 显示/隐藏状态栏组件」**（或设 `agentTokenBar.showStatusBar: false`）。
 
 ## 安全与隐私
 
