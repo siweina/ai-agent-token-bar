@@ -2,7 +2,7 @@
   "name": "ai-agent-token-bar",
   "displayName": "AI Agent Token Bar · 用量与吞吐看板",
   "description": "在状态栏实时显示 AI Agent 会话指标：轮数、步数、tok/s、Token 用量、缓存命中率与上下文占用（适用于 Antigravity IDE / VS Code；数据取自本地会话库，非模拟值）",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "license": "MIT",
   "icon": "icon.png",
   "publisher": "siweina",

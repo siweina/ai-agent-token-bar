@@ -60,7 +60,7 @@
       await h.setGrants(plan);
       cfg.mode = mode;
       saveCfg();
-      log.add({ action: 'mode', reason: '切换到 ' + (mode === 'guarded' ? '受控（安全对齐）' : '完整（原样）') });
+      log.add({ action: 'mode', reason: '切换到 ' + (mode === 'guarded' ? '受控（安全对齐）' : '完整权限（全部放行）') });
       if (h.rerender) h.rerender();
     } catch (e) {
       console.warn('[AGYTB] applyMode 失败: ' + e.message);
@@ -203,7 +203,7 @@
 
   function chipText() {
     var m = currentMode();
-    var label = m === 'guarded' ? '受控' : (m === 'full' ? '原样' : (m === 'off' ? '未启用' : '部分'));
+    var label = m === 'guarded' ? '受控' : (m === 'full' ? '完整权限' : (m === 'off' ? '未启用' : '部分'));
     var icon = m === 'guarded' ? '🛡️' : '⚡';
     var extra = '';
     if (taint && taint.isTainted()) extra = ' · 外部内容' + Math.ceil(taint.remainingMs() / 1000) + 's';
@@ -245,7 +245,7 @@
       '<h4>🛡️ 安全对齐（QQ 群聊等外部内容）</h4>' +
       '<div class="row"><span>当前模式</span><span>' +
         '<button data-act="guarded" data-on="' + (m === 'guarded' ? '1' : '0') + '">🛡️ 受控（推荐）</button> ' +
-        '<button data-act="full" data-on="' + (m === 'full' ? '1' : '0') + '">⚡ 原样</button>' +
+        '<button data-act="full" data-on="' + (m === 'full' ? '1' : '0') + '">⚡ 完整权限</button>' +
       '</span></div>' +
       '<div class="muted">受控：只读直接放行；命令/写入/QQ 发送/沙箱外操作在「未接触外部内容」时自动放行，接触群聊内容后的 ' +
         Math.round(cfg.taintWindowMs / 1000) + ' 秒内转人工确认；沙箱外与浏览器控制永不自动放行。</div>' +

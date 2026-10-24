@@ -262,7 +262,7 @@
     // 原样模式：保持既有行为，但"永不放行"类别仍然拦（这是最底线）
     if (cfg.mode !== 'guarded') {
       if (cls.neverAuto) return { action: 'hold', reasons: ['即使完整模式也不自动放行：' + (cls.reasons.join('；') || cls.kind)] };
-      return { action: 'approve', reasons: ['完整权限（原样）模式'] };
+      return { action: 'approve', reasons: ['完整权限模式（全部放行）'] };
     }
 
     if (cls.neverAuto) return { action: 'hold', reasons: cls.reasons.concat(['需你本人确认']) };

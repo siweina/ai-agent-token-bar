@@ -481,7 +481,7 @@
         '</div>' +
         '<button type="button" class="agytb-perm-btn" data-active="' + (fullPerm ? '1' : '0') + '">' +
           (safetyOwnsChip
-            ? (window.AGYTB_SAFETY_UI.state().mode === 'guarded' ? '切换到 ⚡ 原样' : '切换到 🛡️ 受控')
+            ? (window.AGYTB_SAFETY_UI.state().mode === 'guarded' ? '切换到 ⚡ 完整权限' : '切换到 🛡️ 受控')
             : (fullPerm ? '已开启（点击还原）' : '一键开启完整权限')) +
         '</button>' +
       '</div>' +
