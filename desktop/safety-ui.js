@@ -23,6 +23,7 @@
   var log = S ? S.createLog(60) : { add: function () {}, list: function () { return []; }, clear: function () {} };
   var lastDecision = null;
   var lastWarn = null;
+  var lastExternalScore = 0;   // 可视区域里"外部内容标记"的计数，用于判断是否有新的外部内容到达
   var panelOpen = false;
   var busy = false;
 
@@ -125,9 +126,12 @@
     if (!text) return;
 
     // 1) 外部内容接触 → 建立污染窗口
+    //    只在"又有新的外部内容到达"时续期：否则群聊内容一直留在屏幕上会把窗口无限续期（=永远需要确认）
     if (taint) {
       var ev = taint.detectExternal(text);
-      if (ev.length) taint.touch('外部内容：' + ev.join(','), ev);
+      var extScore = (text.match(/qq[-_][a-z0-9_]+/gi) || []).length + (text.match(/https?:\/\/[^\s"')]{8,}/g) || []).length;
+      if (ev.length && extScore > lastExternalScore) taint.touch('外部内容：' + ev.join(','), ev);
+      lastExternalScore = extScore;   // 内容滚出可视窗口时计数下降属正常，跟随即可
     }
     // 2) 注入特征 → 警告（不阻断，但标记出来）
     var scan = S.scanUntrusted(text);
