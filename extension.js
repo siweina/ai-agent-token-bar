@@ -12,6 +12,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const http = require('http');
 const { SessionStore, conversationsDir, readAllSummaries } = require('./lib/session');
 
 const DEFAULT_PROXY_STATS = path.join(os.homedir(), '.antigravity-ide', 'token-bar-proxy-stats.json');
@@ -495,6 +496,7 @@ function enrichTokens(snap) {
       snap.tokens = t.tokens;
       snap.speed = t.speed;
       snap.cacheHitRate = t.cacheHitRate;
+      if (t.model) snap.model = t.model;   // 模型名（此前漏拷，导致悬停卡片/面板里的模型一直为空）
       snap.tokenSource = t.source;
       snap.cacheSource = t.cacheSource;
       snap.confidence = t.confidence;
@@ -553,6 +555,115 @@ function restartStore() {
 
 let activateContext = null;
 
+// ---------------------------------------------------------------- 面板内胶囊的本机桥
+//
+// IDE 的智能体面板 DOM 在渲染进程，而会话库是扩展宿主读的 → 中间需要一条通道。
+// 这里起一个**只绑 127.0.0.1** 的极简 HTTP 服务，只回指标 JSON（不含对话正文、不含路径），
+// 供注入到面板里的 panel/ide-panel-capsule.js 轮询。渲染入口的 CSP 本来就允许
+// http://127.0.0.1:*，因此不需要改动 CSP。
+const BRIDGE_PORTS = [39177, 39178, 39179, 39277];
+let bridgeServer = null;
+let bridgePort = null;
+let safetyModeCache = { at: 0, mode: null };
+
+function extVersion() {
+  try { return (activateContext && activateContext.extension && activateContext.extension.packageJSON.version) || '0'; } catch (_) { return '0'; }
+}
+
+/** 只读探测共享的权限档位（~/.gemini/config/config.json，桌面端与 IDE 共用） */
+function readSafetyMode() {
+  if (Date.now() - safetyModeCache.at < 10000) return safetyModeCache.mode;
+  let mode = null;
+  try {
+    const p = path.join(os.homedir(), '.gemini', 'config', 'config.json');
+    const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+    const allow = (((j.userSettings || {}).globalPermissionGrants || {}).allow) || [];
+    const FULL = ['mcp(*)', 'command(*)', 'unsandboxed(*)', 'read_file(*)', 'write_file(*)', 'read_url(*)', 'execute_url(*)'];
+    if (FULL.every((x) => allow.indexOf(x) >= 0)) mode = 'full';
+    else if (allow.indexOf('read_file(*)') >= 0) mode = 'guarded';
+    else mode = 'partial';
+  } catch (_) { mode = null; }
+  safetyModeCache = { at: Date.now(), mode };
+  return mode;
+}
+
+function bridgeSnapshot() {
+  const s = currentSnap || {};
+  const t = s.tokens || {};
+  const sp = s.speed || {};
+  return {
+    ok: true,
+    version: extVersion(),
+    conversationId: s.conversationId || null,
+    followSource: s.followSource || (store && store.followSource) || null,
+    running: !!s.running,
+    turns: s.turns === undefined ? null : s.turns,
+    steps: s.steps === undefined ? null : s.steps,
+    agentSteps: s.agentSteps === undefined ? null : s.agentSteps,
+    generations: s.generations === undefined ? null : s.generations,
+    tokens: { newPrompt: t.newPrompt || null, cachedPrompt: t.cachedPrompt || null, output: t.output || null },
+    total: t.total === undefined ? null : t.total,
+    // 注意：本扩展内部 cacheHitRate 用百分数（95.75），而面板胶囊与桌面端按小数（0.9575）渲染
+    cacheHitRate: (typeof s.cacheHitRate === 'number') ? (s.cacheHitRate > 1.5 ? s.cacheHitRate / 100 : s.cacheHitRate) : null,
+    contextPercent: s.contextPercent === undefined ? null : s.contextPercent,
+    speed: sp.value === undefined ? null : sp.value,
+    speedMedian: sp.perGenMedian === undefined ? null : sp.perGenMedian,
+    speedLast: sp.last === undefined ? null : sp.last,
+    durationMs: s.durationMs === undefined ? null : s.durationMs,
+    model: s.model || null,
+    safetyMode: readSafetyMode()
+  };
+}
+
+function startPanelBridge(ctx) {
+  const c = cfg();
+  if (c.panelBridge === false) { console.log('[ai-agent-token-bar] 面板内胶囊桥已按设置关闭'); return; }
+  const wanted = Number(c.panelBridgePort) || BRIDGE_PORTS[0];
+  const candidates = [wanted].concat(BRIDGE_PORTS.filter((p) => p !== wanted));
+
+  const handler = (req, res) => {
+    const url = String(req.url || '').split('?')[0];
+    const send = (obj, code) => {
+      const body = JSON.stringify(obj);
+      res.writeHead(code || 200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-store',
+        'Content-Length': Buffer.byteLength(body)
+      });
+      res.end(body);
+    };
+    if (url === '/health') return send({ ok: true, v: extVersion(), port: bridgePort });
+    if (url === '/snapshot') return send(bridgeSnapshot());
+    return send({ ok: false, error: 'not found' }, 404);
+  };
+
+  let i = 0;
+  const tryNext = () => {
+    if (i >= candidates.length) {
+      console.warn('[ai-agent-token-bar] 面板桥端口全部被占用，面板内胶囊将显示"扩展未连接"');
+      return;
+    }
+    const port = candidates[i++];
+    const server = http.createServer(handler);
+    server.on('error', (e) => {
+      try { server.close(); } catch (_) {}
+      if (e && e.code === 'EADDRINUSE') tryNext();
+      else console.warn('[ai-agent-token-bar] 面板桥启动失败: ' + (e && e.message));
+    });
+    server.listen(port, '127.0.0.1', () => {
+      bridgeServer = server;
+      bridgePort = port;
+      console.log('[ai-agent-token-bar] 面板桥已监听 http://127.0.0.1:' + port + ' （仅本机、仅指标）');
+    });
+  };
+  tryNext();
+
+  ctx.subscriptions.push({
+    dispose: () => { if (bridgeServer) { try { bridgeServer.close(); } catch (_) {} bridgeServer = null; bridgePort = null; } }
+  });
+}
+
 function activate(context) {
   activateContext = context;
 
@@ -587,6 +698,7 @@ function activate(context) {
   }
 
   restartStore();
+  startPanelBridge(context);   // 面板内胶囊的数据桥（只绑 127.0.0.1）
 
   context.subscriptions.push({ dispose: () => { if (store) store.stop(); } });
   console.log('[ai-agent-token-bar] 已启动，数据源目录：' + conversationsDir(c.conversationsDir));

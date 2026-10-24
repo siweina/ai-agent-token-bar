@@ -2,7 +2,7 @@
   "name": "ai-agent-token-bar",
   "displayName": "AI Agent Token Bar · 用量与吞吐看板",
   "description": "在状态栏实时显示 AI Agent 会话指标：轮数、步数、tok/s、Token 用量、缓存命中率与上下文占用（适用于 Antigravity IDE / VS Code；数据取自本地会话库，非模拟值）",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "license": "MIT",
   "icon": "icon.png",
   "publisher": "siweina",
@@ -92,6 +92,16 @@
           "type": "string",
           "default": "",
           "description": "Antigravity 会话库目录。留空则使用默认 ~/.gemini/antigravity-ide/conversations"
+        },
+        "agentTokenBar.panelBridge": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用面板内胶囊的数据桥：只监听 127.0.0.1 的极简 HTTP 服务，仅返回指标 JSON（不含对话内容）。配合 panel/install.js 注入的面板胶囊使用"
+        },
+        "agentTokenBar.panelBridgePort": {
+          "type": "number",
+          "default": 39177,
+          "description": "面板桥监听端口（仅本机）。若被占用会自动顺延到 39178/39179/39277"
         },
         "agentTokenBar.followActiveConversation": {
           "type": "boolean",

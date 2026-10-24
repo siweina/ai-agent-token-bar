@@ -2,6 +2,22 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## 0.3.3
+
+- **IDE 面板内胶囊栏（与桌面端同款 UI，可选）**：新增 `panel/`
+  - `panel/ide-panel-capsule.js`：注入到 IDE 渲染进程，挂在 `#antigravity.agentSidePanelInputBox`
+    下方（与桌面端**同一个挂载点**）：指标胶囊 + 悬停详情卡（12 项）+ 点击固定 + 权限档位只读显示
+  - `panel/install.js`：注入 / 自检（`--verify`）/ 卸载（`--uninstall`），同步重算 `product.json`
+    校验值（否则启动报"安装似乎损坏"），带 `.agy-tb-orig` 备份，可逆、幂等
+  - 数据通道：扩展侧新增**只绑 `127.0.0.1`** 的极简 HTTP 桥（`/health`、`/snapshot`），只回指标
+    JSON（不含对话正文/路径）；端口默认 39177，被占用则顺延 39178/39179/39277
+  - 实测坑：渲染进程强制 Trusted Types，且**不允许自建任意名字的策略**
+    （`createPolicy('任意名')` → `Policy "..." disallowed`），因此注入脚本一律不用 `innerHTML`，
+    全部走 DOM 构造 + `textContent`
+- 修复：`enrichTokens` 从未把 `model` 拷进快照 —— 悬停卡片与看板里的「模型」一直是空的（顺手修掉）
+- 修复：面板桥返回的缓存命中率统一归一化为小数（扩展内部是百分数 95.75，面板按小数渲染会显示 9575%）
+- 配置项新增 `agentTokenBar.panelBridge`（默认开）与 `agentTokenBar.panelBridgePort`
+
 ## 0.3.2
 
 仓库结构统一 + 桌面端并入（**IDE 扩展本身的指标口径不变**）：

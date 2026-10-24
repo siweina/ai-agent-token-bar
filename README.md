@@ -195,6 +195,22 @@ recorder 代码就在 `tools/recorder.js`，可自行审阅：只监听 `127.0.0
 
 细节见 [`desktop/README.md`](./desktop/README.md)。
 
+## 面板内胶囊栏（IDE，可选）
+
+IDE 是标准扩展，默认界面是**状态栏**。如果你想要桌面端那种「输入框下方的胶囊 + 悬停详情卡」，
+`panel/` 可以把同款 UI 挂到 IDE 智能体面板里（挂载点与桌面端完全一致）：
+
+```cmd
+node panel/install.js            :: 注入（改 IDE 渲染入口 + 重算 product.json 校验值，可逆）
+node panel/install.js --verify    :: 自检（标签 + bundle + 校验值）
+node panel/install.js --uninstall :: 卸载（只摘掉本插件的标签）
+```
+
+- 注入后需**完全退出并重启 IDE**（或 Reload Window）生效。
+- 数据来自扩展起的本机桥：**只绑 `127.0.0.1`**，只回指标 JSON（不含对话正文），端口默认 39177。
+- 会改动 IDE 安装目录里的 `workbench.html` / `workbench-jetski-agent.html`（各加一个 `<script>` 标签）
+  并重算 `product.json` 的校验值 —— 与汉化同一套机制，改动前有 `.agy-tb-orig` 备份。
+
 ## 安全与隐私
 
 - **只读**访问会话库，不写入、不修改任何 Antigravity 数据。
