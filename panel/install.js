@@ -3,9 +3,9 @@
  * AI Agent Token Bar · 面板内胶囊 + 权限守卫 安装器
  * ---------------------------------------------------------------------------
  * 往 Antigravity IDE 的两个渲染进程入口（workbench.html / workbench-jetski-agent.html）
- * 注入两个脚本：
- *   1) agy-token-bar-safety.js  —— 策略引擎（即仓库里的 desktop/safety.js，单一真源）
- *   2) agy-token-bar-panel.js   —— 面板胶囊 UI + 权限弹窗守卫（panel/ide-panel-capsule.js）
+ * 注入一个脚本：
+ *   agy-token-bar-panel.js —— 面板胶囊 UI + 「完整权限」开关（panel/ide-panel-capsule.js）
+ * 早期版本还注入过策略引擎 agy-token-bar-safety.js，现已废弃；安装/卸载时会自动清掉它。
  *
  * 与汉化工具包同一套机制：
  *   - 幂等：重复执行不重复注入，只校准校验值
@@ -25,12 +25,15 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-// 部署名 → 源文件（safety.js 直接复用桌面端那份，避免策略逻辑分叉）
+// 部署名 → 源文件（只需注入面板胶囊；权限开关由扩展的桥处理）
 const BUNDLES = [
-  { name: 'agy-token-bar-safety.js', src: path.join(__dirname, '..', 'desktop', 'safety.js') },
   { name: 'agy-token-bar-panel.js', src: path.join(__dirname, 'ide-panel-capsule.js') }
 ];
-const TAGS = BUNDLES.map((b) => '<script src="./' + b.name + '"></script>');
+// 历史遗留：早期版本还注入过策略引擎，卸载/安装时一并清掉
+const STALE_BUNDLES = ['agy-token-bar-safety.js'];
+const ACTIVE_TAGS = BUNDLES.map((b) => '<script src="./' + b.name + '"></script>');
+const STALE_TAGS = STALE_BUNDLES.map((n) => '<script src="./' + n + '"></script>');
+const TAGS = ACTIVE_TAGS.concat(STALE_TAGS);   // 卸载时连历史遗留标签一起摘掉
 const BACKUP_SUFFIX = '.agy-tb-orig';
 const DEFAULT_IDE_DIR = 'F:\\Antigravity IDE';
 const TARGETS = ['workbench.html', 'workbench-jetski-agent.html'];
@@ -96,7 +99,7 @@ function main() {
     for (const name of TARGETS) {
       const file = path.join(wbDir, name);
       const html = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-      const missing = TAGS.filter((t) => !html.includes(t));
+      const missing = ACTIVE_TAGS.filter((t) => !html.includes(t));
       console.log('  ' + name + ' 注入: ' + (missing.length ? '✗ 缺 ' + missing.length + ' 个标签' : '✓'));
       if (missing.length) bad++;
     }
@@ -120,7 +123,7 @@ function main() {
       }
       if (changed) { fs.writeFileSync(file, html, 'utf8'); console.log('✓ 已摘除注入: ' + name); }
     }
-    for (const b of BUNDLES) {
+    for (const b of BUNDLES.concat(STALE_BUNDLES.map((n) => ({ name: n })))) {
       const dest = path.join(wbDir, b.name);
       if (fs.existsSync(dest)) { fs.unlinkSync(dest); console.log('✓ 已删除 bundle: ' + b.name); }
     }
@@ -143,7 +146,7 @@ function main() {
     const file = path.join(wbDir, name);
     if (!fs.existsSync(file)) { console.log('⚠ 跳过（不存在）: ' + name); continue; }
     let html = fs.readFileSync(file, 'utf8');
-    const missing = TAGS.filter((t) => !html.includes(t));
+    const missing = ACTIVE_TAGS.filter((t) => !html.includes(t));
     if (!missing.length) { console.log('• 已注入过: ' + name); continue; }
     const backup = file + BACKUP_SUFFIX;
     if (!fs.existsSync(backup)) { fs.copyFileSync(file, backup); console.log('✓ 已备份: ' + name + BACKUP_SUFFIX); }

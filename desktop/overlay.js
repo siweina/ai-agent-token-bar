@@ -258,8 +258,6 @@
   var lastAutoApproveAt = 0;
 
   function checkAndAutoApprovePermissionModal() {
-    // 安全对齐层接管守卫（它按"是否接触过外部内容"决定自动放行还是转人工）
-    if (window.AGYTB_SAFETY_UI && window.AGYTB_SAFETY_UI.ownsGuard && window.AGYTB_SAFETY_UI.ownsGuard()) return;
     if (!isFullPermActive()) return;
     if (Date.now() - lastAutoApproveAt < 350) return;
     // 严格区分 ask_permission 与普通 ask_question：仅当存在 permission-target-editor 或 permission-details-toggle 时才触发
@@ -290,8 +288,7 @@
         if (e.target && e.target.closest && e.target.closest('.agytb-sc-btn')) {
           e.preventDefault();
           e.stopPropagation();
-          if (window.AGYTB_SAFETY_UI && window.AGYTB_SAFETY_UI.toggle) window.AGYTB_SAFETY_UI.toggle();
-          else setFullPerm(!isFullPermActive());
+          setFullPerm(!isFullPermActive());
         }
       });
       container.appendChild(card);
@@ -344,8 +341,7 @@
       if (t.closest('.agytb-perm') || t.closest('.agytb-perm-btn')) {
         e.preventDefault();
         e.stopPropagation();
-        if (window.AGYTB_SAFETY_UI && window.AGYTB_SAFETY_UI.toggle) window.AGYTB_SAFETY_UI.toggle();
-        else setFullPerm(!isFullPermActive());
+        setFullPerm(!isFullPermActive());
         return;
       }
       if (t.closest('.agytb-pin') || t.closest('.agytb-chip')) {
@@ -431,15 +427,11 @@
     if (ctxP !== null && ctxP !== undefined) {
       html += '<span class="agytb-chip" title="点击可固定/取消固定详情卡片">' + ICON.ctx + '上下文 <span class="agytb-bar ' + level(ctxP) + '"><i style="width:' + Math.max(2, Math.min(100, ctxP)).toFixed(1) + '%"></i></span><b>' + fmtPct(ctxP) + '</b></span>';
     }
-    // 权限胶囊：安全对齐层接管时由它自己的胶囊显示档位（🛡️ 受控 / ⚡ 原样），这里不再重复显示
-    var safetyOwnsChip = !!(window.AGYTB_SAFETY_UI && window.AGYTB_SAFETY_UI.ownsGuard && window.AGYTB_SAFETY_UI.ownsGuard());
-    if (!safetyOwnsChip) {
-      html += '<span class="agytb-chip agytb-perm" data-active="' + (fullPerm ? '1' : '0') + '" title="' +
-        (fullPerm
-          ? '完整权限（无限制）已开启：MCP/命令/沙箱外/文件/网页全部放行，点击可切换回常规模式'
-          : '点击一键开启「完整权限（无限制）」：包含 MCP 工具、命令、文件、网页全放行') + '">' +
-        (fullPerm ? ICON.bolt + '<b>完整权限</b>' : ICON.shield + '<span>常规权限</span>') + '</span>';
-    }
+    html += '<span class="agytb-chip agytb-perm" data-active="' + (fullPerm ? '1' : '0') + '" title="' +
+      (fullPerm
+        ? '完整权限（无限制）已开启：MCP/命令/沙箱外/文件/网页全部放行，点击可切换回常规模式'
+        : '点击一键开启「完整权限（无限制）」：包含 MCP 工具、命令、文件、网页全放行') + '">' +
+      (fullPerm ? ICON.bolt + '<b>完整权限</b>' : ICON.shield + '<span>常规权限</span>') + '</span>';
 
     html += '<span class="agytb-spacer"></span>';
     html += '<span class="agytb-opt1 agytb-sub">' + fmtDur(d.durationMs) + '</span>';
@@ -462,27 +454,17 @@
       cell('逐次中位数 / 末次', (d.speed && d.speed.perGenMedian ? d.speed.perGenMedian.toFixed(1) : '—') + ' / ' + (d.speed && d.speed.last ? d.speed.last.toFixed(1) : '—') + ' tok/s') +
       cell('模型', esc(d.model || '—')) +
       '</div>' +
-      '<div class="agytb-perm-box" data-active="' + ((safetyOwnsChip ? window.AGYTB_SAFETY_UI.state().mode === 'guarded' : fullPerm) ? '1' : '0') + '">' +
+      '<div class="agytb-perm-box" data-active="' + (fullPerm ? '1' : '0') + '">' +
         '<div class="agytb-perm-info">' +
-          '<div class="agytb-perm-title">' +
-            (safetyOwnsChip
-              ? (window.AGYTB_SAFETY_UI.state().mode === 'guarded' ? ICON.shield + '安全对齐：受控模式' : ICON.bolt + '完整权限（原样）已激活')
-              : (fullPerm ? ICON.bolt + '完整权限（无限制）已激活' : ICON.shield + '当前为常规权限模式')) +
-          '</div>' +
+          '<div class="agytb-perm-title">' + (fullPerm ? ICON.bolt + '完整权限（无限制）已激活' : ICON.shield + '当前为常规权限模式') + '</div>' +
           '<div class="agytb-perm-desc">' +
-            (safetyOwnsChip
-              ? (window.AGYTB_SAFETY_UI.state().mode === 'guarded'
-                  ? '只读直接放行；命令/写入/QQ 发送/沙箱外操作按情境自动放行或交你确认'
-                  : '已全部放行；沙箱外执行与浏览器控制仍不自动放行')
-              : (fullPerm
-                  ? '已放行：mcp(*) · command(*) · unsandboxed(*) · read/write_file(*) · read/execute_url(*) + 弹窗自动通过'
-                  : '开启后将补齐官方 Turbo 缺失的 MCP 工具、网页控制与沙箱外命令通配符放行，不再弹出权限申请')) +
+            (fullPerm
+              ? '已放行：mcp(*) · command(*) · unsandboxed(*) · read/write_file(*) · read/execute_url(*) + 弹窗自动通过'
+              : '开启后将补齐官方 Turbo 缺失的 MCP 工具、网页控制与沙箱外命令通配符放行，不再弹出权限申请') +
           '</div>' +
         '</div>' +
         '<button type="button" class="agytb-perm-btn" data-active="' + (fullPerm ? '1' : '0') + '">' +
-          (safetyOwnsChip
-            ? (window.AGYTB_SAFETY_UI.state().mode === 'guarded' ? '切换到 ⚡ 完整权限' : '切换到 🛡️ 受控')
-            : (fullPerm ? '已开启（点击还原）' : '一键开启完整权限')) +
+          (fullPerm ? '已开启（点击还原）' : '一键开启完整权限') +
         '</button>' +
       '</div>' +
       '<div class="agytb-note">数据来自本机会话库（只读）。点击下方胶囊或右上角「固定窗口」可常驻显示，点击空白处关闭。</div>' +
@@ -511,38 +493,6 @@
     });
   }
 
-  /** 供安全对齐层调用：把一份授权计划（allow / ask + 设置）写入全局与项目授权 */
-  async function writeGrants(plan) {
-    if (!plan) return false;
-    var svc = findPrefService();
-    if (!svc) return false;
-    var cur = svc.getPrefValue('permissionGrantsGlobal') || {};
-    await svc.setPrefValue('permissionGrantsGlobal', Object.assign({}, cur, {
-      $typeName: 'exa.codeium_common_pb.PermissionGrantsConfig',
-      allow: Array.isArray(plan.allow) ? plan.allow : [],
-      ask: Array.isArray(plan.ask) ? plan.ask : [],
-      deny: Array.isArray(cur.deny) ? cur.deny : []
-    }));
-    if (plan.settings) {
-      if (typeof plan.settings.enableTerminalSandbox === 'boolean') {
-        try { await svc.setPrefValue('enableTerminalSandbox', plan.settings.enableTerminalSandbox); } catch (_) {}
-      }
-      if (typeof plan.settings.permissionPreset === 'number') {
-        try { await svc.setPrefValue('permissionPreset', plan.settings.permissionPreset); } catch (_) {}
-      }
-    }
-    if (svc.projectSettingsProvider && svc.projectSettingsProvider.setProjectPermissionGrants) {
-      var pCur = svc.projectSettingsProvider.getProjectPermissionGrants('outside-of-project') || {};
-      await svc.projectSettingsProvider.setProjectPermissionGrants('outside-of-project', Object.assign({}, pCur, {
-        $typeName: 'exa.codeium_common_pb.PermissionGrantsConfig',
-        allow: Array.isArray(plan.allow) ? plan.allow : [],
-        ask: Array.isArray(plan.ask) ? plan.ask : [],
-        deny: Array.isArray(pCur.deny) ? pCur.deny : []
-      }));
-    }
-    return true;
-  }
-
   var timer = setInterval(ensureMounted, 250);
   ensureMounted();
 
@@ -551,16 +501,6 @@
     onRoute: ensureMounted,
     setFullPerm: setFullPerm,
     isFullPermActive: isFullPermActive,
-    hooks: {
-      getAllow: function () {
-        var svc = findPrefService();
-        if (!svc) return [];
-        try { var g = svc.getPrefValue('permissionGrantsGlobal'); return (g && Array.isArray(g.allow)) ? g.allow.slice() : []; } catch (_) { return []; }
-      },
-      setGrants: function (plan) { return writeGrants(plan); },
-      rerender: render,
-      syncSettingsCard: syncSettingsCard
-    },
     update: function (data) { state.data = data; ensureMounted(); render(); return true; },
     destroy: function () {
       clearInterval(timer);

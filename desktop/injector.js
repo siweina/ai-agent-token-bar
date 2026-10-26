@@ -33,19 +33,11 @@ const CONV_DIR = process.env.AGYTB_CONVERSATIONS_DIR || path.join(os.homedir(), 
 const LOG_FILE = path.join(__dirname, 'injector.log');
 const LOCK_FILE = path.join(__dirname, 'injector.pid');
 
-// 页面侧依次注入：策略引擎 → 安全对齐 UI → 统计栏（共享一个版本号，任一文件改动都会热重载）
-const PAGE_FILES = ['safety.js', 'safety-ui.js', 'overlay.js'].map((f) => path.join(__dirname, f));
-const CFG_FILE = path.join(__dirname, 'safety-config.json');
+// 页面侧注入统计栏与权限开关（共享一个版本号，文件改动会热重载）
+const PAGE_FILES = ['overlay.js'].map((f) => path.join(__dirname, f));
 let pageMtime = 0;
 let OVERLAY_VERSION = '';
 let OVERLAY = '';
-
-function readSafetyCfg() {
-  try { return JSON.parse(fs.readFileSync(CFG_FILE, 'utf8')); } catch (_) { return null; }
-}
-function writeSafetyCfg(json) {
-  try { JSON.parse(json); fs.writeFileSync(CFG_FILE, json, 'utf8'); log('safety config saved'); } catch (_) {}
-}
 
 function loadOverlay() {
   try {
@@ -110,7 +102,6 @@ class CdpPage {
         try {
           await this.send('Runtime.enable', {});
           await this.send('Runtime.addBinding', { name: '__agyTBRoute' });
-          await this.send('Runtime.addBinding', { name: '__agyTBConfig' });
         } catch (_) {}
         resolve(this);
       };
@@ -125,10 +116,6 @@ class CdpPage {
         try { d = JSON.parse(m.data); } catch (_) { return; }
         if (d.method === 'Runtime.bindingCalled' && d.params && d.params.name === '__agyTBRoute') {
           if (this.onRoute) this.onRoute(this, d.params.payload);
-          return;
-        }
-        if (d.method === 'Runtime.bindingCalled' && d.params && d.params.name === '__agyTBConfig') {
-          writeSafetyCfg(d.params.payload);
           return;
         }
         if (d.id && this.pending.has(d.id)) {
@@ -248,13 +235,9 @@ async function tickPage(page) {
   const probe = await page.eval(PROBE);
   if (!probe) return;
   if (probe.v !== OVERLAY_VERSION) {
-    const sc = readSafetyCfg();
-    if (sc) {
-      try { await page.eval('try{localStorage.setItem("agytb.safety.config", ' + JSON.stringify(JSON.stringify(sc)) + ')}catch(e){}'); } catch (_) {}
-    }
     await page.eval(OVERLAY);
     page.lastPushSig = null;
-    log('overlay injected', { target: page.id, version: OVERLAY_VERSION, safetyCfg: !!sc });
+    log('overlay injected', { target: page.id, version: OVERLAY_VERSION });
   }
   await pushForPath(page, probe.path);
 }

@@ -2,8 +2,7 @@
  * AI Agent Token Bar · IDE 面板内胶囊 + 权限守卫（注入到 workbench 渲染进程）
  * ---------------------------------------------------------------------------
  * 由 panel/install.js 注入到 workbench.html / workbench-jetski-agent.html，
- * 同时注入策略引擎 agy-token-bar-safety.js（即 desktop/safety.js，单一真源）。
- * 挂载点与桌面端一致：#antigravity.agentSidePanelInputBox 下方。
+ * 挂在 #antigravity.agentSidePanelInputBox 下方（与桌面端同一挂载点）。
  *
  * 数据来自扩展宿主起的本机桥（http://127.0.0.1:<port>/snapshot，只回指标 JSON）。
  *
@@ -22,13 +21,12 @@
   var POP_ID = 'agytb-ide-pop';
   var STYLE_ID = 'agytb-ide-style';
   var POLL_MS = 1000;
-  var GUARD_MS = 400;
 
   var state = {
     port: null, data: null, offline: false, pinned: false, open: false,
-    lastOk: 0, err: null, hold: null, tainted: false, taintUntil: 0, log: []
+    lastOk: 0, err: null
   };
-  var hoverTimer = null, hideTimer = null, guardSig = null, extScore = 0, injSig = '';
+  var hoverTimer = null, hideTimer = null;
 
   /* ---------- 格式化 ---------- */
   function fmtTok(n) {
@@ -152,114 +150,21 @@
     try { render(); } catch (e) { state.err = String((e && e.message) || e); }
   }
 
-  function toggleSafety() {
+  /** 「完整权限」开关：开 = 补齐放行规则（不再弹权限申请）；关 = 交回 Antigravity 自己的权限管理 */
+  function togglePerm() {
     var d = state.data;
     if (!d || !state.port) return;
-    var next = d.safetyMode === 'guarded' ? 'full' : 'guarded';
-    fetch('http://127.0.0.1:' + state.port + '/safety-mode', {
+    var next = d.permMode !== 'full';
+    fetch('http://127.0.0.1:' + state.port + '/perm-mode', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: next })
+      body: JSON.stringify({ full: next })
     }).then(function (r) { return r.json(); })
       .then(function (j) {
-        if (j && j.ok) { state.data.safetyMode = j.mode; safeRender(); poll(); }
+        if (j && j.ok) { state.data.permMode = j.mode; safeRender(); poll(); }
         else { state.err = (j && j.error) || '切换失败'; safeRender(); }
       })
       .catch(function (e) { state.err = String((e && e.message) || e); safeRender(); });
-  }
-
-  /* ---------- 权限守卫（策略引擎由 agy-token-bar-safety.js 注入） ---------- */
-  function safetyCfg() {
-    var S = window.AGYTB_SAFETY;
-    var base = (S && S.DEFAULTS) ? S.DEFAULTS : { taintWindowMs: 120000, autoApproveCleanQqSend: true, autoApproveCommands: true };
-    var remote = (state.data && state.data.safetyCfg) || {};
-    return Object.assign({}, base, remote);
-  }
-  function isTainted() { return Date.now() < state.taintUntil; }
-  function touchTaint(reason) {
-    state.taintUntil = Date.now() + (safetyCfg().taintWindowMs || 120000);
-    state.tainted = true;
-  }
-  function guardLog(action, kind, reasons) {
-    state.log.unshift({ at: Date.now(), action: action, kind: kind, reasons: (reasons || []).join('；') });
-    if (state.log.length > 20) state.log.pop();
-  }
-
-  function findPermissionCard() {
-    // IDE 侧没有 permission-target-editor（桌面端才有），因此改为：
-    // 以确认按钮为锚点 → 向上取卡片容器 → **必须含权限线索**才认定为权限卡片（否则返回 null，交给用户）
-    var btn = document.querySelector('[data-testid="interaction-continue-button"]');
-    if (!btn || btn.disabled) return null;
-    var el = btn, card = null;
-    for (var i = 0; i < 8 && el && el.parentElement; i++) {
-      el = el.parentElement;
-      var t = (el.innerText || '').replace(/\s+/g, ' ').trim();
-      if (t.length > 3000) break;
-      if (t.length >= 20) { card = el; break; }
-    }
-    var text = '';
-    if (card) {
-      // ⚠ 必须排除"确认按钮"自身的文本：按钮上写着"允许"，把它算进去会导致普通问答弹窗被误判成权限卡片
-      for (var n = 0; n < card.childNodes.length; n++) {
-        var ch = card.childNodes[n];
-        if (ch === btn) continue;
-        if (ch.contains && ch.contains(btn)) continue;
-        text += ' ' + (ch.textContent || '');
-      }
-      text = text.replace(/\s+/g, ' ').trim();
-    }
-    if (!/ask_permission|permission|权限|审批|\bmcp\(|\bcommand\(|write_file|read_file|unsandboxed|execute_url|read_url/i.test(text)) return null;
-    return { container: card, button: btn, text: text };
-  }
-
-  function guardTick() {
-    var S = window.AGYTB_SAFETY;
-    if (!S) return;
-    var card = findPermissionCard();
-    if (!card || !card.button || card.button.disabled) {
-      if (state.hold) { state.hold = null; safeRender(); }
-      guardSig = null;
-      return;
-    }
-    var mode = (state.data && state.data.safetyMode) || 'guarded';
-    var cls = S.classifyPermission(card.text);
-    var ob = cls.kind === 'qq-send' ? S.scanOutbound(card.text) : null;
-    var v = S.decide({ mode: mode, tainted: isTainted(), cls: cls, outbound: ob, cfg: safetyCfg() });
-    var sig = cls.kind + '|' + v.action + '|' + card.text.slice(0, 60);
-    if (guardSig === sig) return;                     // 同一张卡片只处理一次
-    guardSig = sig;
-    if (v.action === 'approve') {
-      state.hold = null;
-      guardLog('approve', cls.kind, v.reasons);
-      try { card.button.click(); } catch (_) {}
-    } else {
-      state.hold = { kind: cls.kind, reasons: v.reasons };
-      guardLog('hold', cls.kind, v.reasons);
-    }
-    safeRender();
-  }
-
-  /** 外部内容 → 污染窗口；只在新外部内容到达时续期 */
-  function scanPanel() {
-    var S = window.AGYTB_SAFETY;
-    if (!S) return;
-    var box = document.querySelector('.antigravity-agent-side-panel') || document.body;
-    if (!box) return;
-    var text = (box.innerText || '').replace(/\s+/g, ' ').slice(-4000);
-    if (!text) return;
-    var detect = { qq: (text.match(/qq[-_][a-z0-9_]+/gi) || []).length, url: (text.match(/https?:\/\/[^\s"')]{8,}/g) || []).length };
-    var score = detect.qq + detect.url;
-    if (score > extScore) touchTaint('external');
-    extScore = score;
-    var sc = S.scanUntrusted(text);
-    if (sc.suspicious) {
-      var sig = sc.injections.map(function (x) { return x.id + ':' + x.sample; }).join('|');
-      if (sig !== injSig) {
-        injSig = sig;
-        state.injWarn = { at: Date.now(), ids: sc.injections.map(function (x) { return x.id; }).join(',') };
-        guardLog('warn', 'injection', [state.injWarn.ids]);
-      }
-    } else { injSig = ''; }
   }
 
   /* ---------- 渲染 ---------- */
@@ -321,19 +226,15 @@
       ctx.classList.add('agytb-opt4');
       frag.appendChild(ctx);
     }
-    if (state.hold) {
-      frag.appendChild(chip([h('span', null, '⚠ 待你确认')],
-        '这次操作没有自动放行：' + (state.hold.reasons || []).join('；')));
-    } else if (state.injWarn && (Date.now() - state.injWarn.at) < 60000) {
-      frag.appendChild(chip([h('span', null, '⚠ 可疑指令')], '外部内容里检出指令式文本：' + state.injWarn.ids));
-    }
-    if (d.safetyMode) {
-      var safe = chip([h('span', null, d.safetyMode === 'guarded' ? '🛡️ 受控' : '⚡ 完整权限')],
-        '点击切换权限档位：受控（命令/写入/发送按情境自动放行或交你确认）/ 完整权限（全部放行）。与桌面端共用同一份配置');
-      safe.classList.add('click', 'safe');
-      if (d.safetyMode !== 'guarded') safe.classList.add('full');
-      safe.setAttribute('data-act', 'safety');
-      frag.appendChild(safe);
+    if (d.permMode) {
+      var perm = chip([h('span', null, d.permMode === 'full' ? '⚡ 完整权限' : '🛡️ 常规权限')],
+        d.permMode === 'full'
+          ? '完整权限：MCP/命令/沙箱外/文件/网页全部放行（不再弹权限申请）。点击关闭 → 交回 Antigravity 自己的权限管理'
+          : '常规权限：由 Antigravity 自己的权限管理决定是否询问。点击开启完整权限（聊 QQ 时建议关着）');
+      perm.classList.add('click', 'safe');
+      if (d.permMode !== 'full') perm.classList.add('full');
+      perm.setAttribute('data-act', 'perm');
+      frag.appendChild(perm);
     }
     frag.appendChild(h('span', 'sp'));
     var dur = chip([h('span', 'sub', fmtDur(d.durationMs))]);
@@ -370,20 +271,8 @@
     for (var i = 0; i < cells.length; i++) grid.appendChild(cell(cells[i][0], cells[i][1]));
     pop.appendChild(grid);
 
-    if (state.log.length) {
-      var logBox = h('div', 'log');
-      for (var k = 0; k < Math.min(5, state.log.length); k++) {
-        var e = state.log[k];
-        var cls = e.action === 'approve' ? 'ok' : (e.action === 'hold' ? 'bad' : 'warn');
-        var tag = e.action === 'approve' ? '自动放行' : (e.action === 'hold' ? '转你确认' : '警告');
-        logBox.appendChild(h('div', cls, tag + ' · ' + e.kind + ' — ' + e.reasons));
-      }
-      pop.appendChild(logBox);
-    }
-
     var foot = h('div', 'foot');
-    foot.appendChild(h('span', null, '跟随：' + (d.followSource || '—') + ' · ' + (d.conversationId || '').slice(0, 8) +
-      (isTainted() ? ' · 外部内容 ' + Math.ceil((state.taintUntil - Date.now()) / 1000) + 's' : '')));
+    foot.appendChild(h('span', null, '跟随：' + (d.followSource || '—') + ' · ' + (d.conversationId || '').slice(0, 8)));
     var btns = h('span', 'btns');
     var pinBtn = h('button', 'agytb-btn agytb-pin' + (state.pinned ? ' on' : ''), state.pinned ? '已固定' : '固定');
     pinBtn.type = 'button';
@@ -421,7 +310,7 @@
       root.addEventListener('click', function (e) {
         var t = e.target;
         if (!t || !t.closest) return;
-        if (t.closest('[data-act="safety"]')) { toggleSafety(); return; }
+        if (t.closest('[data-act="perm"]')) { togglePerm(); return; }
         if (t.closest('.agytb-x')) { state.pinned = false; state.open = false; safeRender(); return; }
         if (t.closest('.agytb-pin')) { state.pinned = !state.pinned; state.open = true; safeRender(); return; }
         if (t.closest('.c')) { state.pinned = false; state.open = !state.open; safeRender(); }
@@ -491,10 +380,9 @@
 
   /* ---------- 启动 ---------- */
   window.__agyTBIde = {
-    __ver: 'p8',
+    __ver: 'p9',
     state: state,
     refresh: poll,
-    guard: guardTick,
     destroy: function () {
       var r = document.getElementById(ROOT_ID); if (r && r.parentElement) r.parentElement.removeChild(r);
       var p = document.getElementById(POP_ID); if (p && p.parentElement) p.parentElement.removeChild(p);
@@ -507,17 +395,6 @@
   ensureMounted();
   probePorts().then(poll);
   setInterval(poll, POLL_MS);
-  setInterval(guardTick, GUARD_MS);      // 权限弹窗守卫（策略引擎缺省则不动作）
-  setInterval(scanPanel, 1500);          // 外部内容 → 污染窗口
-
-  // 用户自己发言 = 可信指令，解除污染
-  document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Enter' || e.shiftKey) return;
-    var el = e.target;
-    if (!el || !el.id || el.id !== BOX_ID) return;
-    state.taintUntil = 0; state.tainted = false; state.injWarn = null;
-    safeRender();
-  }, true);
 
   document.addEventListener('mousedown', function (e) {
     if (!state.open || state.pinned) return;
