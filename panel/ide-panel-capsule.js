@@ -232,7 +232,7 @@
           ? '完整权限：MCP/命令/沙箱外/文件/网页全部放行（不再弹权限申请）。点击关闭 → 交回 Antigravity 自己的权限管理'
           : '常规权限：由 Antigravity 自己的权限管理决定是否询问。点击开启完整权限（聊 QQ 时建议关着）');
       perm.classList.add('click', 'safe');
-      if (d.permMode !== 'full') perm.classList.add('full');
+      if (d.permMode === 'full') perm.classList.add('full');
       perm.setAttribute('data-act', 'perm');
       frag.appendChild(perm);
     }
